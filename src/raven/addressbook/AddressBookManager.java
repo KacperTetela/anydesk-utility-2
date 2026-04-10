@@ -77,15 +77,8 @@ public final class AddressBookManager {
      */
     public void saveContact(ContactRecord contact) throws IOException {
         List<ContactRecord> contacts = loadContacts();
-        boolean updated = false;
-        for (int i = 0; i < contacts.size(); i++) {
-            if (contacts.get(i).getId().equals(contact.getId())) {
-                contacts.set(i, contact);
-                updated = true;
-                break;
-            }
-        }
-        if (!updated) {
+        contacts.replaceAll(c -> c.getId().equals(contact.getId()) ? contact : c);
+        if (contacts.stream().noneMatch(c -> c.getId().equals(contact.getId()))) {
             contacts.add(contact);
         }
         writeContacts(contacts);

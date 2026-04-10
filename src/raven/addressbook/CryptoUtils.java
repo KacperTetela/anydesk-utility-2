@@ -32,6 +32,9 @@ public final class CryptoUtils {
     private static final String TRANSFORMATION = "AES/GCM/NoPadding";
     private static final int GCM_IV_LENGTH = 12;
     private static final int GCM_TAG_LENGTH = 128; // bits
+    private static final int AES_KEY_LENGTH = 32;  // bytes (256 bits)
+
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private CryptoUtils() {
     }
@@ -48,7 +51,7 @@ public final class CryptoUtils {
     public static String encrypt(String plainText, String masterKey) {
         try {
             byte[] iv = new byte[GCM_IV_LENGTH];
-            new SecureRandom().nextBytes(iv);
+            SECURE_RANDOM.nextBytes(iv);
 
             SecretKeySpec key = buildKey(masterKey);
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
@@ -95,7 +98,7 @@ public final class CryptoUtils {
         byte[] keyBytes = masterKey.getBytes(StandardCharsets.UTF_8);
         MessageDigest sha = MessageDigest.getInstance("SHA-256");
         keyBytes = sha.digest(keyBytes);
-        keyBytes = Arrays.copyOf(keyBytes, 32);
+        keyBytes = Arrays.copyOf(keyBytes, AES_KEY_LENGTH);
         return new SecretKeySpec(keyBytes, ALGORITHM);
     }
 }
