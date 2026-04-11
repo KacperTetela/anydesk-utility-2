@@ -57,12 +57,19 @@ public final class AnyDeskLauncher {
         Process proc = pb.start();
 
         // Write the password to AnyDesk's stdin, then close the stream.
-        // AnyDesk reads one line and then proceeds with the connection.
-        try (OutputStream stdin = proc.getOutputStream();
-             Writer writer = new OutputStreamWriter(stdin, StandardCharsets.UTF_8)) {
-            writer.write(password);
-            writer.write('\n');
-            writer.flush();
+        // AnyDesk reads one line via stdin — equivalent to:
+        //   echo <password> | anydesk.exe <id> --with-password
+        // Use \r\n (Windows line ending) for maximum compatibility.
+        try {
+            try (OutputStream stdin = proc.getOutputStream();
+                 Writer writer = new OutputStreamWriter(stdin, StandardCharsets.UTF_8)) {
+                writer.write(password);
+                writer.write("\r\n");
+                writer.flush();
+            }
+        } catch (java.io.IOException ignored) {
+            // AnyDesk may exit immediately after reading the password line;
+            // a broken-pipe here is harmless — the process still received the data.
         } finally {
             Arrays.fill(password, '\0');
         }

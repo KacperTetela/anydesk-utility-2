@@ -169,34 +169,36 @@ public class AnyDeskConnectView extends JPanel {
         String raw = txtId.getText();
         if (!isValidId(raw)) {
             txtId.putClientProperty("JComponent.outline", "error");
-            setStatus("Invalid ID. Use numbers and spaces only.", true);
+            setStatus("Invalid ID – enter digits only.", true);
             Toolkit.getDefaultToolkit().beep();
             return;
         }
         txtId.putClientProperty("JComponent.outline", null);
 
         String id = raw.trim();
-        setBusy(true);
-        setStatus("Launching AnyDesk for ID " + id + "...", false);
 
         // Take ownership of the pending password (may be null = no password).
         final char[] password = this.pendingPassword;
         this.pendingPassword = null;
+        final boolean usingPassword = password != null && password.length > 0;
+
+        setBusy(true);
+        setStatus("Launching AnyDesk for ID " + id
+                + (usingPassword ? " (with saved password)…" : "…"), false);
 
         launcherExecutor.execute(() -> {
             Process process = null;
             try {
                 LocalDateTime start = LocalDateTime.now();
-                if (password != null && password.length > 0) {
+                if (usingPassword) {
                     process = AnyDeskLauncher.launchWithPassword(id, password); // zeroes password
                 } else {
-                    if (password != null) {
-                        Arrays.fill(password, '\0');
-                    }
+                    if (password != null) Arrays.fill(password, '\0');
                     process = AnyDeskLauncher.launch(id);
                 }
                 addRecent(id); // keep legacy simple recents (used by suggestions fallback)
-                SwingUtilities.invokeLater(() -> setStatus("Launched AnyDesk.", false));
+                SwingUtilities.invokeLater(() -> setStatus(
+                        "Launched AnyDesk." + (usingPassword ? " Password sent." : ""), false));
 
                 int exit = process.waitFor();   // IMPORTANT: never on EDT
                 LocalDateTime end = LocalDateTime.now();
@@ -236,12 +238,7 @@ public class AnyDeskConnectView extends JPanel {
     }
 
     private boolean isValidId(String id) {
-        if (id == null || id.trim().isEmpty()) {
-            return false;
-        }
-        // Remove whitespace and require 9-10 digits (common AnyDesk ID length)
-        String cleanId = id.replaceAll("\\s+", "");
-        return cleanId.matches("\\d{9,10}");
+        return AnyDeskId.isValid(id);
     }
 
     private void clearErrorOutlineIfValid() {
