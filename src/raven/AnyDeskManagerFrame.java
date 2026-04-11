@@ -103,14 +103,14 @@ public class AnyDeskManagerFrame extends JFrame {
     private JPanel createCards() {
         cards.putClientProperty(FlatClientProperties.STYLE, "background:$Panel.background");
         connectView = new AnyDeskConnectView(statusSink);
-        AddressBookView addressBookView = new AddressBookView(id -> {
+        AddressBookView addressBookView = new AddressBookView((id, password) -> {
             showCard(CARD_CONNECT);
-            connectView.startConnection(id);
+            connectView.startConnection(id, password); // password is null when no credential stored
         });
 
         cards.add(connectView, CARD_CONNECT);
         cards.add(addressBookView, CARD_ADDRESS_BOOK);
-        cards.add(new SettingsView(), CARD_SETTINGS);
+        cards.add(new SettingsView(addressBookView::reload), CARD_SETTINGS);
         return cards;
     }
 

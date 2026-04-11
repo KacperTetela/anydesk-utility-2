@@ -8,7 +8,9 @@ import java.awt.Toolkit;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.BiConsumer;
@@ -21,7 +23,6 @@ import javax.swing.JTable;
 import javax.swing.SwingUtilities;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
-import javax.swing.text.AbstractDocument;
 import net.miginfocom.swing.MigLayout;
 import raven.addressbook.AddressBookStore;
 import raven.anydesk.AnyDeskCleanupService;
@@ -48,6 +49,13 @@ public class AnyDeskConnectView extends JPanel {
     private SuggestionTextField txtId;
     private JButton cmdConnect;
     private final BiConsumer<String, Boolean> statusSink;
+
+    /**
+     * Password to use for the next connection, supplied by the Address Book when
+     * launching a contact that has a saved credential. Owned by this class;
+     * zeroed immediately after it is passed to the launcher.
+     */
+    private volatile char[] pendingPassword;
 
     private final ConnectionHistoryStore historyStore = new ConnectionHistoryStore();
     private final AddressBookStore addressBookStore = new AddressBookStore();
@@ -80,13 +88,14 @@ public class AnyDeskConnectView extends JPanel {
         subtitle.putClientProperty(FlatClientProperties.STYLE, "foreground:$Label.disabledForeground");
 
         txtId = new SuggestionTextField();
-        txtId.putClientProperty(FlatClientProperties.PLACEHOLDER_TEXT, "e.g. 123 456 789");
+        txtId.putClientProperty(FlatClientProperties.PLACEHOLDER_TEXT, "ID or contact name…");
         txtId.putClientProperty(FlatClientProperties.STYLE, ""
                 + "arc:14;"
                 + "margin:10,12,10,12;");
-        ((AbstractDocument) txtId.getDocument()).setDocumentFilter(AnyDeskId.digitsAndSpacesFilter());
-        // Enter key triggers the same logic as clicking "Connect"
-        txtId.addActionListener(e -> executeConnection());
+        // No DocumentFilter — the field accepts names for suggestion search.
+        // Validation (digits only) is enforced at connection time in isValidId().
+        txtId.addActionListener(e -> executeConnection()); // Enter with no popup open
+        txtId.setOnAccepted(this::executeConnection);      // Enter / click on highlighted suggestion
         txtId.setSuggestionProvider(this::suggest);
         txtId.getDocument().addDocumentListener(new DocumentListener() {
             @Override
@@ -170,11 +179,22 @@ public class AnyDeskConnectView extends JPanel {
         setBusy(true);
         setStatus("Launching AnyDesk for ID " + id + "...", false);
 
+        // Take ownership of the pending password (may be null = no password).
+        final char[] password = this.pendingPassword;
+        this.pendingPassword = null;
+
         launcherExecutor.execute(() -> {
             Process process = null;
             try {
                 LocalDateTime start = LocalDateTime.now();
-                process = AnyDeskLauncher.launch(id);
+                if (password != null && password.length > 0) {
+                    process = AnyDeskLauncher.launchWithPassword(id, password); // zeroes password
+                } else {
+                    if (password != null) {
+                        Arrays.fill(password, '\0');
+                    }
+                    process = AnyDeskLauncher.launch(id);
+                }
                 addRecent(id); // keep legacy simple recents (used by suggestions fallback)
                 SwingUtilities.invokeLater(() -> setStatus("Launched AnyDesk.", false));
 
@@ -305,10 +325,28 @@ public class AnyDeskConnectView extends JPanel {
         prefs.put(PREF_KEY_RECENTS, String.join("|", existing));
     }
 
+    /**
+     * Initiates a connection to the given ID without a saved password.
+     * Equivalent to the user typing the ID and pressing Connect.
+     */
     public void startConnection(String anyDeskId) {
+        startConnection(anyDeskId, null);
+    }
+
+    /**
+     * Initiates a connection to the given ID using a pre-decrypted password.
+     * The {@code password} array is owned by this method and will be zeroed
+     * after the launcher has consumed it. Pass {@code null} for no password.
+     */
+    public void startConnection(String anyDeskId, char[] password) {
         if (anyDeskId == null) {
             return;
         }
+        // Zero any previously pending password that was never consumed
+        if (this.pendingPassword != null) {
+            Arrays.fill(this.pendingPassword, '\0');
+        }
+        this.pendingPassword = password;
         txtId.setText(anyDeskId);
         executeConnection();
     }
@@ -318,44 +356,53 @@ public class AnyDeskConnectView extends JPanel {
         if (q.isEmpty()) {
             return List.of();
         }
-        String qn = q.replaceAll("\\s+", "");
+        String qLower = q.toLowerCase(Locale.ROOT);
+        String qDigits = q.replaceAll("\\s+", ""); // for ID matching
 
         List<SuggestionItem> out = new ArrayList<>();
 
-        // 1) Address book
+        // 1) Address book — match by ID, full name, room number, or hostname
         for (var d : addressBookStore.load()) {
             String id = d.anyDeskId();
-            if (matchesId(id, q, qn)) {
-                out.add(new SuggestionItem(id, id + "  —  " + d.name()));
+            if (matchesId(id, qDigits)
+                    || matchesName(d.fullName(),   qLower)
+                    || matchesName(d.roomNumber(),  qLower)
+                    || matchesName(d.hostname(),    qLower)) {
+                // Show the human-readable label (name / room / hostname) first, ID after
+                out.add(new SuggestionItem(id, d.displayLabel() + "  —  " + id));
             }
         }
 
-        // 2) History
+        // 2) History — match by ID only (no name stored)
         for (var r : historyStore.load()) {
             String id = r.anydeskId();
-            if (matchesId(id, q, qn) && out.stream().noneMatch(x -> x.value().equals(id))) {
+            if (matchesId(id, qDigits) && out.stream().noneMatch(x -> x.value().equals(id))) {
                 out.add(new SuggestionItem(id, id + "  —  recent"));
             }
         }
 
         // 3) Mock LAN devices
         for (String mock : List.of("111 222 333", "999 888 777")) {
-            if (matchesId(mock, q, qn) && out.stream().noneMatch(x -> x.value().equals(mock))) {
+            if (matchesId(mock, qDigits) && out.stream().noneMatch(x -> x.value().equals(mock))) {
                 out.add(new SuggestionItem(mock, mock + "  —  LAN Device (mock)"));
             }
         }
         return out;
     }
 
-    private boolean matchesId(String id, String q, String qn) {
-        if (id == null) {
+    /** ID match: the raw ID or its digit-only form contains the digit query string. */
+    private boolean matchesId(String id, String qDigits) {
+        if (id == null || id.isBlank() || qDigits.isEmpty()) {
             return false;
         }
         String s = id.trim();
-        if (s.isEmpty()) {
-            return false;
-        }
-        return s.contains(q) || s.replaceAll("\\s+", "").contains(qn);
+        return s.contains(qDigits) || s.replaceAll("\\s+", "").contains(qDigits);
+    }
+
+    /** Name match: case-insensitive substring. */
+    private boolean matchesName(String name, String qLower) {
+        return name != null && !name.isBlank()
+                && name.toLowerCase(Locale.ROOT).contains(qLower);
     }
 
     private static final class HistoryTableModel extends javax.swing.table.AbstractTableModel {

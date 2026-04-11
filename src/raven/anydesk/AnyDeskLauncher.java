@@ -1,10 +1,15 @@
 package raven.anydesk;
 
 import java.io.FileNotFoundException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -32,6 +37,36 @@ public final class AnyDeskLauncher {
         ProcessBuilder pb = new ProcessBuilder(exe.toString(), id);
         pb.redirectErrorStream(true);
         return pb.start();
+    }
+
+    /**
+     * Launches AnyDesk and supplies {@code password} via stdin using the
+     * {@code --with-password} flag.
+     *
+     * <p>The {@code password} array is zeroed by this method before it returns,
+     * regardless of whether the launch succeeded. Callers must not read the
+     * array afterwards.
+     */
+    public static Process launchWithPassword(String anyDeskId, char[] password) throws Exception {
+        String id = normalizeId(anyDeskId);
+        Path exe = resolveExecutable().orElseThrow(() ->
+                new FileNotFoundException("Could not find " + EXE_NAME + " in PATH or common install locations."));
+
+        ProcessBuilder pb = new ProcessBuilder(exe.toString(), id, "--with-password");
+        pb.redirectErrorStream(true);
+        Process proc = pb.start();
+
+        // Write the password to AnyDesk's stdin, then close the stream.
+        // AnyDesk reads one line and then proceeds with the connection.
+        try (OutputStream stdin = proc.getOutputStream();
+             Writer writer = new OutputStreamWriter(stdin, StandardCharsets.UTF_8)) {
+            writer.write(password);
+            writer.write('\n');
+            writer.flush();
+        } finally {
+            Arrays.fill(password, '\0');
+        }
+        return proc;
     }
 
     public static String normalizeId(String raw) {

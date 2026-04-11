@@ -35,6 +35,17 @@ public class SuggestionTextField extends javax.swing.JTextField {
 
     private SuggestionProvider provider = q -> List.of();
 
+    /**
+     * Optional callback invoked on the EDT immediately after the user accepts
+     * a suggestion (via Enter or mouse click). Use this to trigger an action
+     * (e.g. start a connection) without any additional key handling.
+     */
+    private Runnable onAccepted;
+
+    public void setOnAccepted(Runnable onAccepted) {
+        this.onAccepted = onAccepted;
+    }
+
     private final JPopupMenu popup = new JPopupMenu();
     private final DefaultListModel<SuggestionItem> model = new DefaultListModel<>();
     private final JList<SuggestionItem> list = new JList<>(model);
@@ -141,6 +152,11 @@ public class SuggestionTextField extends javax.swing.JTextField {
 
     private void updateSuggestions() {
         SwingUtilities.invokeLater(() -> {
+            // Field may have been disabled (busy) by the time this runs — don't flash the popup.
+            if (!isEnabled() || !isShowing()) {
+                popup.setVisible(false);
+                return;
+            }
             String q = getText() != null ? getText().trim() : "";
             List<SuggestionItem> suggestions = provider.suggest(q);
             List<SuggestionItem> limited = new ArrayList<>();
@@ -178,10 +194,14 @@ public class SuggestionTextField extends javax.swing.JTextField {
             popup.setVisible(false);
             return;
         }
-        setText(item.value());
         popup.setVisible(false);
+        setText(item.value());
         setCaretPosition(getText().length());
         requestFocusInWindow();
+        if (onAccepted != null) {
+            // Defer slightly so the field value is committed before the action fires.
+            SwingUtilities.invokeLater(onAccepted);
+        }
     }
 }
 
