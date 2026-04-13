@@ -32,6 +32,7 @@ import raven.anydesk.AnyDeskSettings;
 import raven.history.ConnectionHistoryStore;
 import raven.history.ConnectionRecord;
 import raven.ui.SuggestionTextField.SuggestionItem;
+import raven.addressbook.AddressBookStore;
 
 public class AnyDeskConnectView extends JPanel {
 
@@ -142,6 +143,29 @@ public class AnyDeskConnectView extends JPanel {
         historyTable.putClientProperty(FlatClientProperties.STYLE, ""
                 + "selectionArc:10;");
         historyTable.setDefaultRenderer(Object.class, new AlternatingRowRenderer());
+        historyTable.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override public void mouseClicked(java.awt.event.MouseEvent e) {
+                int col = historyTable.columnAtPoint(e.getPoint());
+                int row = historyTable.rowAtPoint(e.getPoint());
+                if (row < 0) return;
+                if (col == 3) {
+                    // "Save to Address Book" column
+                    String id = (String) historyModel.getValueAt(row, 0);
+                    AddressBookView.DeviceDialog.showForId(
+                            AnyDeskConnectView.this, new AddressBookStore(), id, null);
+                } else if (e.getClickCount() == 2) {
+                    String id = (String) historyModel.getValueAt(row, 0);
+                    txtId.setText(id);
+                    executeConnection();
+                }
+            }
+        });
+
+        // "Save" column: fixed narrow width
+        historyTable.getColumnModel().getColumn(3).setMaxWidth(90);
+        historyTable.getColumnModel().getColumn(3).setMinWidth(70);
+        historyTable.getColumnModel().getColumn(3).setPreferredWidth(80);
+        historyTable.getColumnModel().getColumn(3).setCellRenderer(new SaveBtnRenderer());
 
         JScrollPane historyScroll = new JScrollPane(historyTable);
         historyScroll.putClientProperty(FlatClientProperties.STYLE, ""
@@ -377,13 +401,6 @@ public class AnyDeskConnectView extends JPanel {
                 out.add(new SuggestionItem(id, id + "  —  recent"));
             }
         }
-
-        // 3) Mock LAN devices
-        for (String mock : List.of("111 222 333", "999 888 777")) {
-            if (matchesId(mock, qDigits) && out.stream().noneMatch(x -> x.value().equals(mock))) {
-                out.add(new SuggestionItem(mock, mock + "  —  LAN Device (mock)"));
-            }
-        }
         return out;
     }
 
@@ -404,7 +421,7 @@ public class AnyDeskConnectView extends JPanel {
 
     private static final class HistoryTableModel extends javax.swing.table.AbstractTableModel {
         private java.util.List<ConnectionRecord> data = java.util.List.of();
-        private static final String[] COLS = {"AnyDesk ID", "Last Connected", "Duration"};
+        private static final String[] COLS = {"AnyDesk ID", "Last Connected", "Duration", ""};
         private static final java.time.format.DateTimeFormatter DF = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
         void setData(java.util.List<ConnectionRecord> list) {
@@ -434,6 +451,7 @@ public class AnyDeskConnectView extends JPanel {
                 case 0 -> r.anydeskId();
                 case 1 -> r.connectionDate().format(DF);
                 case 2 -> formatDuration(r.durationSeconds());
+                case 3 -> "Zapisz";
                 default -> "";
             };
         }
@@ -469,7 +487,7 @@ public class AnyDeskConnectView extends JPanel {
             return c;
         }
 
-        private static java.awt.Color blend(java.awt.Color a, java.awt.Color b, float t) {
+        static java.awt.Color blend(java.awt.Color a, java.awt.Color b, float t) {
             if (a == null) return b;
             if (b == null) return a;
             t = Math.max(0f, Math.min(1f, t));
@@ -477,6 +495,53 @@ public class AnyDeskConnectView extends JPanel {
             int g = (int) Math.round(a.getGreen() * (1 - t) + b.getGreen() * t);
             int bl = (int) Math.round(a.getBlue() * (1 - t) + b.getBlue() * t);
             return new java.awt.Color(r, g, bl);
+        }
+    }
+
+    /** Renderer for the "Zapisz" column — pill-shaped button with accent border. */
+    private static final class SaveBtnRenderer extends javax.swing.table.DefaultTableCellRenderer {
+        @Override
+        public java.awt.Component getTableCellRendererComponent(
+                javax.swing.JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+            super.getTableCellRendererComponent(table, value, isSelected, false, row, column);
+            setText("+ Zapisz");
+            setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+            setForeground(javax.swing.UIManager.getColor("App.accentColor"));
+            if (!isSelected) {
+                java.awt.Color base = javax.swing.UIManager.getColor("Table.background");
+                if (base == null) base = javax.swing.UIManager.getColor("List.background");
+                java.awt.Color mixed = (row % 2 == 0) ? base
+                        : AlternatingRowRenderer.blend(base, javax.swing.UIManager.getColor("Panel.background"), 0.08f);
+                setBackground(mixed != null ? mixed : java.awt.Color.DARK_GRAY);
+            }
+            setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 6, 0, 6));
+            return this;
+        }
+
+        @Override
+        protected void paintComponent(java.awt.Graphics g) {
+            super.paintComponent(g);
+            java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
+            g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING,
+                    java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+            java.awt.Color accent = javax.swing.UIManager.getColor("App.accentColor");
+            if (accent == null) accent = new java.awt.Color(0xD92B34);
+            java.awt.FontMetrics fm = g2.getFontMetrics(getFont());
+            String text = getText();
+            int textW = fm.stringWidth(text);
+            int padH = 8, padV = 3;
+            int pillW = textW + padH * 2;
+            int pillH = fm.getHeight() + padV * 2;
+            int pillX = (getWidth() - pillW) / 2;
+            int pillY = (getHeight() - pillH) / 2;
+            int arc = pillH;
+            // pill background
+            g2.setColor(new java.awt.Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 25));
+            g2.fillRoundRect(pillX, pillY, pillW, pillH, arc, arc);
+            // pill border
+            g2.setColor(new java.awt.Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 100));
+            g2.drawRoundRect(pillX, pillY, pillW, pillH, arc, arc);
+            g2.dispose();
         }
     }
 }

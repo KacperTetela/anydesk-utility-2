@@ -34,7 +34,7 @@ public final class AnyDeskLauncher {
         Path exe = resolveExecutable().orElseThrow(() ->
                 new FileNotFoundException("Could not find " + EXE_NAME + " in PATH or common install locations."));
 
-        ProcessBuilder pb = new ProcessBuilder(exe.toString(), id);
+        ProcessBuilder pb = new ProcessBuilder(exe.toString(), id, "--plain");
         pb.redirectErrorStream(true);
         return pb.start();
     }
@@ -52,7 +52,7 @@ public final class AnyDeskLauncher {
         Path exe = resolveExecutable().orElseThrow(() ->
                 new FileNotFoundException("Could not find " + EXE_NAME + " in PATH or common install locations."));
 
-        ProcessBuilder pb = new ProcessBuilder(exe.toString(), id, "--with-password");
+        ProcessBuilder pb = new ProcessBuilder(exe.toString(), id, "--with-password", "--plain");
         pb.redirectErrorStream(true);
         Process proc = pb.start();
 

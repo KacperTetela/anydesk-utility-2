@@ -48,9 +48,9 @@ public class AnyDeskManagerFrame extends JFrame {
     private void initFrame() {
         setTitle("AnyDesk Connection Manager");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        // Taller default window for history table visibility
-        setSize(new Dimension(860, 700));
-        setMinimumSize(new Dimension(780, 600));
+        // Larger default window for better readability across all views
+        setSize(new Dimension(1100, 800));
+        setMinimumSize(new Dimension(900, 650));
         setLocationRelativeTo(null);
         getRootPane().putClientProperty(FlatClientProperties.FULL_WINDOW_CONTENT, true);
     }

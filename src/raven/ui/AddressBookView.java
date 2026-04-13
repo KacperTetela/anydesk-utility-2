@@ -8,7 +8,6 @@ import java.awt.Cursor;
 import java.awt.Dialog;
 import java.awt.Font;
 import java.awt.FontMetrics;
-import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
@@ -40,6 +39,7 @@ import javax.swing.JPasswordField;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
+import javax.swing.JComboBox;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import javax.swing.table.AbstractTableModel;
@@ -67,11 +67,14 @@ public class AddressBookView extends JPanel {
     static final int COL_LAST     = 4;
 
     // Visual constants
-    private static final int ROW_HEIGHT_GROUP   = 50;
-    private static final int ROW_HEIGHT_ENTRY   = 34;
-    private static final int ACCENT_BAR_W       = 6;
-    private static final int ENTRY_LEFT_MARGIN  = 34;  // total left reserved area for entry rows
-    private static final int ENTRY_TEXT_PADDING = 10;  // space between margin and text in COL_NAME
+    private static final int ROW_HEIGHT_GROUP   = 36;
+    private static final int ROW_HEIGHT_ENTRY   = 32;
+    private static final int CELL_PAD_LEFT      = 14;
+    private static final int CELL_PAD_RIGHT     = 10;
+    private static final int ADD_BTN_MARGIN_R   = 14;
+    private static final int ADD_BTN_PAD_H      = 6;   // horizontal padding inside pill
+    private static final int ADD_BTN_PAD_V      = 3;   // vertical padding inside pill
+    private static final String ADD_BTN_LABEL   = "+ Dodaj";
 
     private final AddressBookStore store = new AddressBookStore();
     private final BiConsumer<String, char[]> connectAction;
@@ -102,12 +105,12 @@ public class AddressBookView extends JPanel {
         putClientProperty(FlatClientProperties.STYLE, "background:null");
         setLayout(new MigLayout("fill,insets 0", "[grow,fill]", "[grow]"));
 
-        JPanel card = new JPanel(new MigLayout("wrap,fill,insets 22", "[grow,fill]", "[]12[grow]12[]"));
+        JPanel card = new JPanel(new MigLayout("wrap,fill,insets 26", "[grow,fill]", "[]14[grow]14[]"));
         card.putClientProperty(FlatClientProperties.STYLE,
                 "arc:20;border:1,1,1,1,$Component.borderColor,,20;background:$Panel.background");
 
         JLabel title = new JLabel("Address Book");
-        title.putClientProperty(FlatClientProperties.STYLE, "font:+6");
+        title.putClientProperty(FlatClientProperties.STYLE, "font:+8");
 
         model = new GroupedTableModel();
         table = buildTable();
@@ -173,37 +176,9 @@ public class AddressBookView extends JPanel {
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                                     RenderingHints.VALUE_ANTIALIAS_ON);
                 try {
-                    Color accent = accentColor();
                     for (int row = 0; row < model.getRowCount(); row++) {
                         if (model.isGroupRow(row)) {
                             paintGroupHeader(g2, row);
-                        } else {
-                            Rectangle r = getCellRect(row, 0, true);
-
-                            // Tinted indent zone (bar + remaining margin area)
-                            g2.setColor(new Color(accent.getRed(), accent.getGreen(),
-                                                  accent.getBlue(), 18));
-                            g2.fillRect(ACCENT_BAR_W, r.y,
-                                        ENTRY_LEFT_MARGIN - ACCENT_BAR_W, r.height);
-
-                            // Solid accent bar
-                            g2.setColor(new Color(accent.getRed(), accent.getGreen(),
-                                                  accent.getBlue(), 55));
-                            g2.fillRect(0, r.y, ACCENT_BAR_W, r.height);
-
-                            // Vertical connector line — stops at midpoint for last entry in group
-                            int lineX   = ACCENT_BAR_W + (ENTRY_LEFT_MARGIN - ACCENT_BAR_W) / 2;
-                            boolean lastInGroup = model.isLastInGroup(row);
-                            int lineEndY = lastInGroup ? r.y + r.height / 2 : r.y + r.height;
-                            g2.setColor(new Color(accent.getRed(), accent.getGreen(),
-                                                  accent.getBlue(), 65));
-                            g2.fillRect(lineX, r.y, 1, lineEndY - r.y);
-
-                            // Horizontal elbow at the midpoint of last entry
-                            if (lastInGroup) {
-                                g2.fillRect(lineX, r.y + r.height / 2,
-                                            ENTRY_LEFT_MARGIN - lineX - 4, 1);
-                            }
                         }
                     }
                 } finally {
@@ -215,88 +190,72 @@ public class AddressBookView extends JPanel {
                 Rectangle r = getCellRect(row, 0, true);
                 r.x = 0; r.width = getWidth();
 
-                // ── Inter-group gap: strong divider line above (skip very first row) ──
+                // ── Subtle divider line above (skip first row) ────────────────
                 if (r.y > 0) {
                     g2.setColor(dividerColor());
                     g2.drawLine(r.x, r.y, r.x + r.width, r.y);
                 }
 
-                // ── Background: tableBg blended with a hint of accent ─────────
-                Color bg   = groupHeaderBg();
-                Color accent = accentColor();
-                Color tinted = blendWith(bg, accent, 0.07f);
-                g2.setColor(tinted);
-                g2.fillRect(r.x, r.y, r.width, r.height);
+                // ── Clean flat background ──────────────────────────────────────
+                g2.setColor(groupHeaderBg());
+                g2.fillRect(r.x, r.y + 1, r.width, r.height - 1);
 
                 // ── Bottom border ─────────────────────────────────────────────
-                g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 60));
+                g2.setColor(dividerColor());
                 g2.drawLine(r.x, r.y + r.height - 1, r.x + r.width, r.y + r.height - 1);
 
-                // ── Left accent bar (solid, full height) ──────────────────────
                 GroupedTableModel.GroupRow gr = (GroupedTableModel.GroupRow) model.rowAt(row);
-                g2.setColor(gr.collapsed() ? accent.darker() : accent);
-                g2.fillRect(r.x, r.y, ACCENT_BAR_W, r.height);
 
-                // ── Expand / collapse arrow (in accent color) ─────────────────
-                String arrow   = gr.collapsed() ? "\u25B6" : "\u25BC";
-                Font   arrowFont = getFont().deriveFont(Font.BOLD, getFont().getSize() - 0.5f);
-                g2.setFont(arrowFont);
-                g2.setColor(accent);
-                FontMetrics arrowFm = g2.getFontMetrics(arrowFont);
-                int arrowX = r.x + ACCENT_BAR_W + 12;
-                int arrowY = r.y + (r.height - arrowFm.getHeight()) / 2 + arrowFm.getAscent();
-                g2.drawString(arrow, arrowX, arrowY);
-
-                // ── Room label (larger bold) ──────────────────────────────────
-                String roomLabel = GroupedTableModel.NO_ROOM.equals(gr.roomKey())
-                        ? "Bez numeru pok\u00f3ju"
-                        : "Pok\u00f3j\u00a0" + gr.roomKey();
-                Font boldFont = getFont().deriveFont(Font.BOLD, getFont().getSize() + 1.5f);
-                g2.setFont(boldFont);
+                // ── Chevron ───────────────────────────────────────────────────
+                String chevron = gr.collapsed() ? "\u25B8" : "\u25BE";  // ▸ or ▾
+                Font chevronFont = getFont().deriveFont(Font.PLAIN, getFont().getSize() + 1f);
+                g2.setFont(chevronFont);
                 g2.setColor(groupHeaderFg());
-                FontMetrics boldFm = g2.getFontMetrics(boldFont);
-                int labelX = arrowX + arrowFm.stringWidth(arrow) + 10;
-                int labelY = r.y + (r.height - boldFm.getHeight()) / 2 + boldFm.getAscent();
-                g2.drawString(roomLabel, labelX, labelY);
+                FontMetrics cfm = g2.getFontMetrics(chevronFont);
+                int cx = r.x + CELL_PAD_LEFT;
+                int cy = r.y + (r.height - cfm.getHeight()) / 2 + cfm.getAscent();
+                g2.drawString(chevron, cx, cy);
 
-                // ── Count pill badge (right-aligned) ──────────────────────────
-                String countStr = String.valueOf(gr.count());
-                Font   pillFont = getFont().deriveFont(Font.BOLD, getFont().getSize() - 1.5f);
-                g2.setFont(pillFont);
-                FontMetrics pillFm   = g2.getFontMetrics(pillFont);
-                int pillPadH = 3;
-                int pillPadW = 9;
-                int pillW  = pillFm.stringWidth(countStr) + pillPadW * 2;
-                int pillH  = pillFm.getHeight() + pillPadH * 2;
-                int pillX  = r.x + r.width - pillW - 16;
-                int pillY  = r.y + (r.height - pillH) / 2;
+                // ── Room label ─────────────────────────────────────────────────
+                String roomLabel = GroupedTableModel.NO_ROOM.equals(gr.roomKey())
+                        ? "Bez pokoju"
+                        : "Pok\u00f3j " + gr.roomKey();
+                Font labelFont = getFont().deriveFont(Font.BOLD, getFont().getSize() + 0.5f);
+                g2.setFont(labelFont);
+                g2.setColor(groupHeaderFg());
+                FontMetrics lfm = g2.getFontMetrics(labelFont);
+                int lx = cx + cfm.stringWidth(chevron) + 8;
+                int ly = r.y + (r.height - lfm.getHeight()) / 2 + lfm.getAscent();
+                g2.drawString(roomLabel, lx, ly);
+
+                // ── "+ Dodaj" pill button (right-aligned) ─────────────────────
+                Color accent = accentColor();
+                Font btnFont = getFont().deriveFont(Font.PLAIN, getFont().getSize() - 0.5f);
+                g2.setFont(btnFont);
+                FontMetrics bfm = g2.getFontMetrics(btnFont);
+                int pillW = bfm.stringWidth(ADD_BTN_LABEL) + ADD_BTN_PAD_H * 2;
+                int pillH = bfm.getHeight() + ADD_BTN_PAD_V * 2;
+                int pillX = r.x + r.width - pillW - ADD_BTN_MARGIN_R;
+                int pillY = r.y + (r.height - pillH) / 2;
+                int arc   = pillH;  // fully rounded ends
                 // pill background
-                g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 45));
-                g2.fillRoundRect(pillX, pillY, pillW, pillH, pillH, pillH);
+                g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 25));
+                g2.fillRoundRect(pillX, pillY, pillW, pillH, arc, arc);
                 // pill border
-                g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 120));
-                g2.drawRoundRect(pillX, pillY, pillW, pillH, pillH, pillH);
+                g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 90));
+                g2.drawRoundRect(pillX, pillY, pillW, pillH, arc, arc);
                 // pill text
                 g2.setColor(accent);
-                g2.drawString(countStr, pillX + pillPadW,
-                              pillY + pillPadH + pillFm.getAscent());
-
-                // ── Subtle label → pill separator line ────────────────────────
-                int lineX1 = labelX + boldFm.stringWidth(roomLabel) + 14;
-                int lineX2 = pillX - 14;
-                int lineY  = r.y + r.height / 2;
-                if (lineX2 > lineX1 + 20) {
-                    g2.setColor(new Color(groupHeaderFg().getRed(),
-                            groupHeaderFg().getGreen(), groupHeaderFg().getBlue(), 25));
-                    g2.drawLine(lineX1, lineY, lineX2, lineY);
-                }
+                int tx = pillX + ADD_BTN_PAD_H;
+                int ty = pillY + ADD_BTN_PAD_V + bfm.getAscent();
+                g2.drawString(ADD_BTN_LABEL, tx, ty);
             }
         };
 
         t.setRowHeight(ROW_HEIGHT_ENTRY);
         t.putClientProperty(FlatClientProperties.STYLE,
                 "showHorizontalLines:false;showVerticalLines:false;");
-        t.getTableHeader().putClientProperty(FlatClientProperties.STYLE, "height:34");
+        t.getTableHeader().putClientProperty(FlatClientProperties.STYLE, "height:32");
         t.setBackground(tableBg());
         t.setIntercellSpacing(new java.awt.Dimension(0, 0));
 
@@ -305,9 +264,9 @@ public class AddressBookView extends JPanel {
         t.getColumnModel().getColumn(COL_PASSWORD).setCellRenderer(new PasswordCellRenderer());
 
         // Preferred widths
-        t.getColumnModel().getColumn(COL_NAME).setPreferredWidth(200);
-        t.getColumnModel().getColumn(COL_HOST).setPreferredWidth(150);
-        t.getColumnModel().getColumn(COL_ID).setPreferredWidth(110);
+        t.getColumnModel().getColumn(COL_NAME).setPreferredWidth(220);
+        t.getColumnModel().getColumn(COL_HOST).setPreferredWidth(160);
+        t.getColumnModel().getColumn(COL_ID).setPreferredWidth(120);
         t.getColumnModel().getColumn(COL_PASSWORD).setPreferredWidth(90);
         t.getColumnModel().getColumn(COL_LAST).setPreferredWidth(140);
 
@@ -323,15 +282,30 @@ public class AddressBookView extends JPanel {
             }
         });
 
-        // Mouse: toggle group on click; connect on double-click entry
+        // Mouse: toggle group on click; "+" to add device; double-click entry to connect
         t.addMouseListener(new MouseAdapter() {
             @Override public void mouseClicked(MouseEvent e) {
                 int row = t.rowAtPoint(e.getPoint());
                 if (row < 0) return;
                 if (model.isGroupRow(row)) {
-                    model.toggleGroup(row);
-                    syncRowHeights(t);
-                    t.clearSelection();
+                    // Compute pill hit area (same formula as paintGroupHeader)
+                    Rectangle cellRect = t.getCellRect(row, 0, true);
+                    cellRect.x = 0; cellRect.width = t.getWidth();
+                    FontMetrics bfm = t.getFontMetrics(
+                            t.getFont().deriveFont(Font.PLAIN, t.getFont().getSize() - 0.5f));
+                    int pillW = bfm.stringWidth(ADD_BTN_LABEL) + ADD_BTN_PAD_H * 2;
+                    int pillH = bfm.getHeight() + ADD_BTN_PAD_V * 2;
+                    int pillX = cellRect.x + cellRect.width - pillW - ADD_BTN_MARGIN_R;
+                    int pillY = cellRect.y + (cellRect.height - pillH) / 2;
+                    if (e.getX() >= pillX && e.getX() <= pillX + pillW
+                            && e.getY() >= pillY && e.getY() <= pillY + pillH) {
+                        GroupedTableModel.GroupRow gr = (GroupedTableModel.GroupRow) model.rowAt(row);
+                        onAddForRoom(gr.roomKey());
+                    } else {
+                        model.toggleGroup(row);
+                        syncRowHeights(t);
+                        t.clearSelection();
+                    }
                 } else if (e.getClickCount() == 2) {
                     onConnectSelected();
                 }
@@ -430,6 +404,11 @@ public class AddressBookView extends JPanel {
         DeviceDialog.show(this, store, null, () -> reload());
     }
 
+    private void onAddForRoom(String roomKey) {
+        String room = GroupedTableModel.NO_ROOM.equals(roomKey) ? "" : roomKey;
+        DeviceDialog.showForRoom(this, store, room, () -> reload());
+    }
+
     private void onEditSelected() {
         int row = table.getSelectedRow();
         if (row < 0 || model.isGroupRow(row)) return;
@@ -517,15 +496,12 @@ public class AddressBookView extends JPanel {
                 return c;
             }
             if (!sel) {
-                // Subtle zebra stripe within each group
                 int localIdx = model.localIndexInGroup(row);
                 Color base = tableBg();
-                Color alt  = blendWith(base, groupHeaderBg(), 0.09f);
+                Color alt  = blendWith(base, groupHeaderBg(), 0.06f);
                 setBackground(localIdx % 2 == 0 ? base : alt);
             }
-            // COL_NAME indented past the full left margin; other columns normal
-            int leftPad = (col == COL_NAME) ? ENTRY_LEFT_MARGIN + ENTRY_TEXT_PADDING : 10;
-            setBorder(BorderFactory.createEmptyBorder(0, leftPad, 0, 10));
+            setBorder(BorderFactory.createEmptyBorder(0, CELL_PAD_LEFT, 0, CELL_PAD_RIGHT));
             return c;
         }
     }
@@ -557,7 +533,7 @@ public class AddressBookView extends JPanel {
                 setBackground(localIdx % 2 == 0 ? base : alt);
             }
             super.getTableCellRendererComponent(t, display, sel, false, row, col);
-            setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 10));
+            setBorder(BorderFactory.createEmptyBorder(0, CELL_PAD_LEFT, 0, CELL_PAD_RIGHT));
             return this;
         }
     }
@@ -788,16 +764,27 @@ public class AddressBookView extends JPanel {
         private final DeviceEntry      existing;
         private final Callback         callback;
 
-        private JTextField     txtRoom, txtName, txtHost, txtId;
+        private JComboBox<String> cmbRoom;
+        private JTextField     txtName, txtHost, txtId;
         private JPasswordField txtPassword;
         private JLabel         lblStatus;
         private JButton        cmdTest;
 
+        private String prefillRoom;
+        private String prefillId;
+
         private DeviceDialog(Window owner, AddressBookStore store,
                              DeviceEntry existing, Callback callback) {
+            this(owner, store, existing, null, callback);
+        }
+
+        private DeviceDialog(Window owner, AddressBookStore store,
+                             DeviceEntry existing, String prefillRoom, Callback callback) {
             super(owner, existing == null ? "Add Device" : "Edit Device",
                   Dialog.ModalityType.APPLICATION_MODAL);
-            this.store = store; this.existing = existing; this.callback = callback;
+            this.store = store; this.existing = existing;
+            this.prefillRoom = prefillRoom; this.prefillId = null;
+            this.callback = callback;
             initUi();
             pack();
             setResizable(false);
@@ -810,6 +797,27 @@ public class AddressBookView extends JPanel {
                              store, existing, callback).setVisible(true);
         }
 
+        static void showForRoom(JPanel parent, AddressBookStore store,
+                                String roomNumber, Callback callback) {
+            new DeviceDialog(SwingUtilities.getWindowAncestor(parent),
+                             store, null, roomNumber, callback).setVisible(true);
+        }
+
+        /**
+         * Opens the Add Device dialog with a pre-filled AnyDesk ID.
+         * Called from Recent Connections to quickly save a device to the address book.
+         */
+        static void showForId(JPanel parent, AddressBookStore store,
+                              String anyDeskId, Callback callback) {
+            DeviceDialog dlg = new DeviceDialog(SwingUtilities.getWindowAncestor(parent),
+                    store, null, null, callback);
+            dlg.prefillId = anyDeskId;
+            dlg.txtId.setText(anyDeskId != null ? anyDeskId : "");
+            dlg.pack();
+            dlg.setLocationRelativeTo(SwingUtilities.getWindowAncestor(parent));
+            dlg.setVisible(true);
+        }
+
         private void initUi() {
             boolean edit = existing != null;
             JPanel root = new JPanel(new MigLayout("wrap,fillx,insets 20", "[fill,380!]", "[]8[]"));
@@ -818,7 +826,18 @@ public class AddressBookView extends JPanel {
             JLabel heading = new JLabel(edit ? "Edit Device" : "Add Device");
             heading.putClientProperty(FlatClientProperties.STYLE, "font:+4");
 
-            txtRoom = field("np. 101");
+            // Room combo: editable, pre-populated with existing rooms
+            cmbRoom = new JComboBox<>();
+            cmbRoom.setEditable(true);
+            cmbRoom.putClientProperty(FlatClientProperties.PLACEHOLDER_TEXT, "Wybierz lub wpisz nowy");
+            java.util.TreeSet<String> rooms = new java.util.TreeSet<>();
+            for (DeviceEntry d : store.load()) {
+                String r = d.roomNumber();
+                if (r != null && !r.isBlank()) rooms.add(r.trim());
+            }
+            for (String r : rooms) cmbRoom.addItem(r);
+            cmbRoom.setSelectedItem("");  // start empty
+
             txtName = field("np. Jan Kowalski");
             txtHost = field("np. PC-ROOM101");
             txtId   = field("cyfry i spacje");
@@ -831,10 +850,12 @@ public class AddressBookView extends JPanel {
                     : "Opcjonalne — pozostaw puste jeśli brak hasła");
 
             if (edit) {
-                txtRoom.setText(existing.roomNumber());
+                cmbRoom.setSelectedItem(existing.roomNumber());
                 txtName.setText(existing.fullName());
                 txtHost.setText(existing.hostname());
                 txtId.setText(existing.anyDeskId());
+            } else if (prefillRoom != null && !prefillRoom.isEmpty()) {
+                cmbRoom.setSelectedItem(prefillRoom);
             }
 
             lblStatus = new JLabel(" ");
@@ -860,7 +881,7 @@ public class AddressBookView extends JPanel {
             btnRow.add(cmdSave); btnRow.add(cmdCancel); btnRow.add(cmdTest, "align right");
 
             root.add(heading,                       "gapy 0 8");
-            root.add(new JLabel("Numer pokoju"));   root.add(txtRoom);
+            root.add(new JLabel("Numer pokoju"));   root.add(cmbRoom);
             root.add(new JLabel("Imię i nazwisko"),"gapy 6"); root.add(txtName);
             root.add(new JLabel("Hostname"),        "gapy 6"); root.add(txtHost);
             root.add(new JLabel("Numer AnyDesk"),   "gapy 6"); root.add(txtId);
@@ -879,7 +900,8 @@ public class AddressBookView extends JPanel {
         }
 
         private void onSave() {
-            String room = txtRoom.getText().trim();
+            Object sel = cmbRoom.getSelectedItem();
+            String room = sel != null ? sel.toString().trim() : "";
             String name = txtName.getText().trim();
             String host = txtHost.getText().trim();
             String id   = txtId.getText().trim();
