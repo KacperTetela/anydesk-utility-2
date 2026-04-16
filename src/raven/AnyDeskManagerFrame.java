@@ -3,6 +3,7 @@ package raven;
 import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatLaf;
+import com.formdev.flatlaf.FlatLightLaf;
 import com.formdev.flatlaf.extras.FlatAnimatedLafChange;
 import com.formdev.flatlaf.extras.FlatSVGIcon;
 import java.awt.BorderLayout;
@@ -17,6 +18,7 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.BorderFactory;
+import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import net.miginfocom.swing.MigLayout;
 import raven.ui.AddressBookView;
@@ -141,12 +143,36 @@ public class AnyDeskManagerFrame extends JFrame {
         return new FlatSVGIcon(fallbackSvgPath, fallbackScale);
     }
 
-    public static void main(String[] args) {
-        // Global LAF init (pick one; easy to swap later)
-        FlatDarkLaf.setup();
-        UIManager.put("defaultFont", new Font("Dialog", Font.PLAIN, 13));
+    // ── Theme management ──────────────────────────────────────────────────────
 
-        // Make focus + selection feel more modern
+    /**
+     * Applies the given theme ("dark", "light", or "system") with an animated
+     * transition. Safe to call from the EDT at any time after startup.
+     */
+    public static void applyTheme(String theme) {
+        raven.config.ConfigManager.setTheme(theme);
+
+        boolean wantDark;
+        if ("light".equals(theme)) {
+            wantDark = false;
+        } else if ("system".equals(theme)) {
+            wantDark = isSystemDarkMode();
+        } else {
+            wantDark = true;
+        }
+
+        FlatAnimatedLafChange.showSnapshot();
+        if (wantDark) FlatDarkLaf.setup(); else FlatLightLaf.setup();
+        applyCustomDefaults();
+        for (java.awt.Window w : java.awt.Window.getWindows()) {
+            SwingUtilities.updateComponentTreeUI(w);
+        }
+        FlatAnimatedLafChange.hideSnapshotWithAnimation();
+    }
+
+    /** Common UI defaults applied after every LAF switch. */
+    private static void applyCustomDefaults() {
+        UIManager.put("defaultFont", new Font("Dialog", Font.PLAIN, 13));
         UIManager.put("Component.focusWidth", 1);
         UIManager.put("Component.arc", 12);
         UIManager.put("Button.arc", 12);
@@ -160,8 +186,38 @@ public class AnyDeskManagerFrame extends JFrame {
         UIManager.put("Component.focusColor", anyDeskRed);
         UIManager.put("TextComponent.focusColor", anyDeskRed);
         UIManager.put("Component.innerFocusWidth", 1);
+    }
+
+    /** Detects whether Windows is in dark mode via the registry. Falls back to dark. */
+    private static boolean isSystemDarkMode() {
+        try {
+            Process p = new ProcessBuilder("reg", "query",
+                    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                    "/v", "AppsUseLightTheme")
+                    .redirectErrorStream(true).start();
+            String output = new String(p.getInputStream().readAllBytes());
+            p.waitFor();
+            // Value is 0x0 for dark, 0x1 for light
+            if (output.contains("0x0")) return true;
+            if (output.contains("0x1")) return false;
+        } catch (Exception ignored) {}
+        return true; // default to dark if detection fails
+    }
+
+    public static void main(String[] args) {
+        // Initial theme from saved preference
+        String savedTheme = raven.config.ConfigManager.getTheme();
+        boolean wantDark;
+        if ("light".equals(savedTheme)) {
+            wantDark = false;
+        } else if ("system".equals(savedTheme)) {
+            wantDark = isSystemDarkMode();
+        } else {
+            wantDark = true;
+        }
+        if (wantDark) FlatDarkLaf.setup(); else FlatLightLaf.setup();
+        applyCustomDefaults();
 
         EventQueue.invokeLater(() -> new AnyDeskManagerFrame().setVisible(true));
     }
 }
-

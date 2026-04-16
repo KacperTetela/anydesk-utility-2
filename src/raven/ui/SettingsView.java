@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JFileChooser;
@@ -13,8 +14,10 @@ import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
+import javax.swing.JToggleButton;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import net.miginfocom.swing.MigLayout;
+import raven.AnyDeskManagerFrame;
 import raven.anydesk.AnyDeskSettings;
 import raven.config.ConfigManager;
 
@@ -80,17 +83,41 @@ public class SettingsView extends JPanel {
         pathRow.add(txtAbPath, "growx");
         pathRow.add(cmdBrowse);
 
+        // ── Theme ────────────────────────────────────────────────────────────
+        JLabel themeTitle = new JLabel("Appearance");
+        themeTitle.putClientProperty(FlatClientProperties.STYLE, "font:+2;fontStyle:bold");
+
+        JLabel themeSubtitle = new JLabel("Choose your preferred color scheme.");
+        themeSubtitle.putClientProperty(FlatClientProperties.STYLE, "foreground:$Label.disabledForeground");
+
+        ThemeSegmentedSlider themeSlider = new ThemeSegmentedSlider();
+        themeSlider.setSelectedTheme(ConfigManager.getTheme());
+        themeSlider.setOnThemeChanged(AnyDeskManagerFrame::applyTheme);
+
         // ── Assembly ─────────────────────────────────────────────────────────
         card.add(title);
         card.add(subtitle);
         card.add(chkCleanup, "gapy 8");
 
-        card.add(abTitle, "gapy 8");
+        card.add(themeTitle, "gapy 8");
+        card.add(themeSubtitle);
+        card.add(themeSlider, "gapy 4,h 42!");
+
+        card.add(abTitle, "gapy 16");
         card.add(abSubtitle);
         card.add(pathRow, "growx");
         card.add(cmdCreateDefault);
 
         add(card, "dock center");
+    }
+
+    private static JToggleButton segBtn(String label, String themeKey) {
+        JToggleButton btn = new JToggleButton(label);
+        btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btn.putClientProperty(FlatClientProperties.STYLE,
+                "margin:8,18,8,18;");
+        btn.addActionListener(e -> AnyDeskManagerFrame.applyTheme(themeKey));
+        return btn;
     }
 
     // ── Actions ──────────────────────────────────────────────────────────────
